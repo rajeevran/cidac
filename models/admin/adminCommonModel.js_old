@@ -1,0 +1,3716 @@
+
+var AdminSchema = require('../../schema/admin/admin');
+var CounterSchema = require('../../schema/admin/counter');
+var NewsSchema = require('../../schema/admin/news');
+var MasjidSchema = require('../../schema/admin/masjid');
+var NewsCategorySchema = require('../../schema/admin/newsCategory');
+var ServiceProviderSchema = require('../../schema/admin/serviceProvider');
+var ServiceProviderCategorySchema = require('../../schema/admin/serviceProviderCategory');
+var IslamicRadioSchema = require('../../schema/admin/islamicradio');
+var commonMethod = require("../../utility/common");
+const fetch = require('node-fetch');
+
+//let liveUrl = require("../../config");
+var CountrySchema = require('../../schema/admin/country');
+var StateSchema = require('../../schema/admin/state');
+var CitySchema = require('../../schema/admin/city');
+var QaSchema = require('../../schema/admin/qa');
+var AdvertisementSchema = require('../../schema/admin/advertisement');
+var QaCategorySchema = require('../../schema/admin/qaCategory');
+var PrayerSchema = require('../../schema/admin/prayer');
+var AboutIslamSchema = require('../../schema/admin/islam');
+var AboutUsSchema = require('../../schema/admin/aboutus');
+var PillerOfIslamSchema = require('../../schema/admin/pillerofislam');
+
+var AnnouncementSchema = require('../../schema/admin/announcement');
+const axios = require('axios')
+const moment = require('moment')
+
+
+var TermSchema = require('../../schema/admin/term');
+
+var config = require('../../config');
+var async = require("async");
+var bcrypt = require('bcrypt-nodejs');
+var mailProperty = require('../../modules/sendMail');
+
+var jwt = require('jsonwebtoken');
+var jwtOtp = require('jwt-otp');
+var fs = require('fs');
+var csvtojson = require("csvtojson");
+
+var mongoose = require('mongoose');
+var mongo = require('mongodb');
+var ObjectID = mongo.ObjectID;
+
+async function getLatLong(lat, long, modules) {
+    let [googleCityDetails] = await Promise.all([
+        fetch('https://maps.googleapis.com/maps/api/geocode/json?address=' + lat + ',' + long + '&key=AIzaSyAe7ZL3el97Fsw7DGmDrEKBnOwDgBzURXs&sensor=false')
+            .then(res => res.json())
+    ]);
+
+    var city = ''
+    let filterData = googleCityDetails.results[0].address_components.filter(
+
+        gcity => gcity.types[0] == "administrative_area_level_2"
+    )
+
+    if (filterData.length > 0) {
+        city = filterData[0].long_name
+    } else {
+        let nearestLatLongSchema = ''
+        let nearestLat = ''
+        let nearestLong = ''
+        if (modules == 'NewsSchema') {
+            nearestLatLongSchema = await NewsSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else if (modules == 'MasjidSchema') {
+            nearestLatLongSchema = await MasjidSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else if (modules == 'ServiceProviderSchema') {
+            nearestLatLongSchema = await ServiceProviderSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else if (modules == 'IslamicRadioSchema') {
+            nearestLatLongSchema = await IslamicRadioSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else if (modules == 'QaSchema') {
+            nearestLatLongSchema = await QaSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else if (modules == 'AdvertisementSchema') {
+            nearestLatLongSchema = await AdvertisementSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else if (modules == 'PrayerSchema') {
+            nearestLatLongSchema = await PrayerSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else if (modules == 'AnnouncementSchema') {
+            nearestLatLongSchema = await AnnouncementSchema.findOne({
+                location: {
+                    $near: {
+                        $maxDistance: 10000,
+                        $geometry: {
+                            type: "Point",
+                            coordinates: [long, lat]
+                        }
+                    }
+                }
+            })
+        } else {
+            nearestLatLongSchema = {}
+            nearestLatLongSchema.latitude = lat
+            nearestLatLongSchema.longitude = long
+
+        }
+        if (nearestLatLongSchema != null) {
+            let [nearestGoogleCityDetails] = await Promise.all([
+                fetch('https://maps.googleapis.com/maps/api/geocode/json?address=' + nearestLatLongSchema.latitude + ',' + nearestLatLongSchema.longitude + '&key=AIzaSyAe7ZL3el97Fsw7DGmDrEKBnOwDgBzURXs&sensor=false')
+                    .then(res => res.json())
+            ]);
+            var city = ''
+            let filterData = nearestGoogleCityDetails.results[0].address_components.filter(
+                gcity => gcity.types[0] == "administrative_area_level_2"
+            )
+            if (filterData.length > 0) {
+                city = filterData[0].long_name
+            } else {
+                city = ''
+            }
+        } else {
+            city = ''
+        }
+    }
+    return city
+}
+
+var commonModel = {
+    authenticate: function (jwtData, callback) {
+        if (jwtData["x-access-token"]) {
+            jwt.verify(jwtData["x-access-token"], config.secretKey, function (err, decoded) {
+                if (err) {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Session timeout! Please login again.",
+                        response: err
+                    });
+                } else {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Authenticate successfully.",
+                        response: decoded
+                    });
+                }
+            });
+        }
+    },
+    addNewsModel: async function (data, callback) {
+        if (data) {
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'NewsSchema')
+                    .then(res => res)
+            ]);
+            var newsSchema = {
+                title: data.title,
+                categoryId: data.categoryId,
+                description: data.description,
+                image: data.image,
+                longitude: data.longitude,
+                latitude: data.latitude,
+                address: data.address,
+                city: city,
+                location: JSON.parse(data.location)
+            }
+            new NewsSchema(newsSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listNewsModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'title': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        NewsSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countNews = await NewsSchema.countDocuments().exec()
+        let searchFilters = {};
+
+        if (data.searchTerm) {
+            searchFilters["title"] = { $regex: data.searchTerm, $options: "i" };
+        }
+
+        if (data.categoryId && data.categoryId != '-1') {
+            searchFilters["categoryId"] = data.categoryId;
+        }
+
+        if (data._id) {
+            searchFilters["_id"] = data._id;
+        }
+
+        if (data.title) {
+            searchFilters["title"] = { $regex: data.title, $options: "i" };
+        }
+        if (data.lat && data.long) {
+            searchFilters["location"] = {
+                $near: {
+                    $maxDistance: 10000,
+                    $geometry: {
+                        type: "Point",
+                        coordinates: [data.long, data.lat]
+                    }
+                }
+            };
+        }
+        //#region Set pagination and sorting======================
+        //=======(common Params[pageindex=1&pagesize=10&sortby=name&sorttype=Asc])
+        let sortRecord = { updatedAt: 'desc' };
+        let pageIndex = 1;
+        let pageSize = parseInt(config.limit);
+        let limitRecord = pageSize;
+        let skipRecord = 0;
+        //pageSize, pageIndex, sortBy, sortType, lat, long
+        if (data.pageSize) {
+            pageSize = parseInt(data.pageSize);
+        }
+        if (data.pageIndex) {
+            pageIndex = parseInt(data.pageIndex);
+        }
+        if (pageIndex > 1) {
+            skipRecord = (pageIndex - 1) * pageSize;
+        }
+        limitRecord = pageSize;
+        if (data.sortBy && data.sortType) {
+            let sortBy = data.sortBy;
+            let sortType = "";
+            if (data.sortType.toLowerCase() === "desc") {
+                sortType = -1;
+            }
+            //sortRecord = {}
+            sortRecord[sortBy] = sortType;
+        }
+
+
+        let news = await NewsSchema.find(searchFilters)
+            .sort(sortRecord)
+            .limit(limitRecord)
+            .skip(skipRecord)
+            .exec();
+
+
+
+        for (let index = 0; index < news.length; index++) {
+            const categoryId = news[index].categoryId;
+            const createdAt = news[index].createdAt;
+            const updatedAt = news[index].updatedAt;
+
+            let newsCategory = await NewsCategorySchema.findOne({ _id: categoryId })
+            combineResponse.push(
+                {
+                    ...news[index].toObject(),
+                    categoryName: newsCategory.name,
+                    formatedCreatedAt: moment(createdAt).format('LL'),
+                    formatedUpdatedAt: moment(updatedAt).format('LL')
+                }
+            )
+
+        }
+
+        let newsCountFiltered = await NewsSchema.find(searchFilters)
+
+
+        if (news.length > 0) {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "Success",
+                totalData: countNews,
+                filteredData: newsCountFiltered.length,
+                response: combineResponse
+            })
+        } else {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "Success",
+                totalData: 0,
+                filteredData: 0,
+                response: []
+            })
+        }
+
+
+    },
+
+    editNewsModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        let file_with_path = ''
+        NewsSchema.findOne({ _id: data._id })
+            .then(async ven => {
+                if (ven) {
+
+                    if (data.image) {
+                        file_with_path = `./public/${ven.image}`;
+                    }
+                    if (data) {
+                        let [city] = await Promise.all([
+                            getLatLong(data.latitude, data.longitude, 'NewsSchema')
+                                .then(res => res)
+                        ]);
+
+                        NewsSchema.update(
+                            { _id: data._id },
+                            {
+                                $set: {
+                                    image: data.image ? data.image : ven.image,
+                                    title: data.title,
+                                    categoryId: data.categoryId,
+                                    description: data.description,
+                                    longitude: data.longitude,
+                                    latitude: data.latitude,
+                                    address: data.address,
+                                    city: city,
+                                    location: JSON.parse(data.location)
+                                }
+                            }
+                        ).then(r => {
+                            callback({
+                                success: true,
+                                STATUSCODE: 2000,
+                                message: "Success"
+                            });
+                        })
+                    }
+                }
+            });
+    },
+
+
+
+    deleteNewsModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        if (data) {
+            NewsSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+    getAllNewsModel: async function (data, callback) {
+        let combineResponse = []
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, data.modules)
+                .then(res => res)
+        ]);
+
+        NewsSchema.find({ city: city }).sort({ updatedAt: 'desc' })//.limit(5)
+            .then(async res => {
+                if (res.length > 0) {
+                    for (let index = 0; index < res.length; index++) {
+                        const categoryId = res[index].categoryId;
+                        const createdAt = res[index].createdAt;
+                        const updatedAt = res[index].updatedAt;
+
+                        let resCategory = await NewsCategorySchema.findOne({ _id: categoryId })
+                        combineResponse.push(
+                            {
+                                ...res[index].toObject(),
+                                categoryName: resCategory.name,
+                                formatedCreatedAt: moment(createdAt).format('LL'),
+                                formatedUpdatedAt: moment(updatedAt).format('LL')
+                            }
+                        )
+
+                    }
+
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success",
+                        response: combineResponse
+                    });
+                } else {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "No Announcement Found",
+                        response: []
+                    });
+
+                }
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+
+    addNewsCategoryModel: async function (data, callback) {
+
+        if (data) {
+
+            var newsSchema = {
+                name: data.name
+            }
+
+            new NewsCategorySchema(newsSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listNewsCategoryModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'name': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        NewsCategorySchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countNewsCategory = await NewsCategorySchema.countDocuments().exec()
+
+        //   let news = await NewsCategorySchema.find({})
+        //     .skip(data.offset).limit(data.limit)
+
+        let searchFilters = {};
+
+        if (data.searchTerm) {
+            searchFilters["name"] = { $regex: data.searchTerm, $options: "i" };
+        }
+
+        if (data._id && data._id != '-1') {
+            searchFilters["_id"] = data._id;
+        }
+
+        if (data.name) {
+            searchFilters["name"] = { $regex: data.name, $options: "i" };
+        }
+
+        //#region Set pagination and sorting===============================================
+        //=======(common Params[pageindex=1&pagesize=10&sortby=name&sorttype=Asc])
+        let sortRecord = { _id: 1 };
+        let pageIndex = 1;
+
+        let pageSize = parseInt(config.limit);
+        let limitRecord = pageSize;
+        let skipRecord = 0;
+        //pageSize, pageIndex, sortBy, sortType, lat, long
+        if (data.pageSize) {
+            pageSize = parseInt(data.pageSize);
+        }
+        if (data.pageIndex) {
+            pageIndex = parseInt(data.pageIndex);
+        }
+        if (pageIndex > 1) {
+            skipRecord = (pageIndex - 1) * pageSize;
+        }
+        limitRecord = pageSize;
+        if (data.sortBy && data.sortType) {
+            let sortBy = data.sortBy;
+            let sortType = "";
+            if (data.sortType.toLowerCase() === "desc") {
+                sortType = -1;
+            }
+            sortRecord = {}
+            sortRecord[sortBy] = sortType;
+        }
+
+
+        let NewsCategory = await NewsCategorySchema.find(searchFilters)
+            .sort(sortRecord)
+            .limit(limitRecord)
+            .skip(skipRecord)
+            .exec();
+
+
+
+        for (let index = 0; index < NewsCategory.length; index++) {
+            const createdAt = NewsCategory[index].createdAt;
+            const updatedAt = NewsCategory[index].updatedAt;
+            combineResponse.push(
+                {
+                    ...NewsCategory[index].toObject(),
+                    formatedCreatedAt: moment(createdAt).format('LL'),
+                    formatedUpdatedAt: moment(updatedAt).format('LL')
+                }
+            )
+
+        }
+
+        if (NewsCategory.length > 0) {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "Success",
+                totalData: countNewsCategory,
+                response: combineResponse
+            })
+        } else {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "Success",
+                totalData: 0,
+                response: []
+            })
+        }
+
+
+    },
+    editNewsCategoryModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            NewsCategorySchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        name: data.name
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deleteNewsCategoryModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            NewsCategorySchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllNewsCategoryModel: async function (data, callback) {
+
+        NewsCategorySchema.find()
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+    //#region service provider
+
+    addServiceProviderModel: async function (data, callback) {
+
+        if (data) {
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'ServiceProviderSchema')
+                    .then(res => res)
+            ]);
+
+            var newsSchema = {
+                categoryId: data.categoryId,
+                name: data.name,
+                companyName: data.companyName,
+                companyWebsite: data.companyWebsite,
+                isdCode: data.isdCode,
+                contact: data.contact,
+                image: data.image,
+                description: data.description,
+                longitude: data.longitude,
+                latitude: data.latitude,
+                address: data.address,
+                city: city,
+                location: JSON.parse(data.location)
+            }
+
+            new ServiceProviderSchema(newsSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listServiceProviderModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'name': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        ServiceProviderSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countServiceProvider = await ServiceProviderSchema.countDocuments(qry).exec()
+
+        let searchFilters = {};
+
+        if (data.searchTerm) {
+            searchFilters["title"] = { $regex: data.searchTerm, $options: "i" };
+        }
+
+        if (data.categoryId && data.categoryId != '-1') {
+            searchFilters["categoryId"] = data.categoryId;
+        }
+
+        if (data._id) {
+            searchFilters["_id"] = data._id;
+        }
+
+        if (data.title) {
+            searchFilters["title"] = { $regex: data.title, $options: "i" };
+        }
+
+        if (data.lat && data.long) {
+            searchFilters["location"] = {
+                $near: {
+                    $maxDistance: 10000,
+                    $geometry: {
+                        type: "Point",
+                        coordinates: [data.long, data.lat]
+                    }
+                }
+            };
+        }
+
+        let sortRecord = { updatedAt: 'desc' };
+        let pageIndex = 1;
+        let pageSize = parseInt(config.limit);
+        let limitRecord = pageSize;
+        let skipRecord = 0;
+        if (data.pageSize) {
+            pageSize = parseInt(data.pageSize);
+        }
+        if (data.pageIndex) {
+            pageIndex = parseInt(data.pageIndex);
+        }
+        if (pageIndex > 1) {
+            skipRecord = (pageIndex - 1) * pageSize;
+        }
+        limitRecord = pageSize;
+        if (data.sortBy && data.sortType) {
+            let sortBy = data.sortBy;
+            let sortType = "";
+            if (data.sortType.toLowerCase() === "desc") {
+                sortType = -1;
+            }
+
+            sortRecord[sortBy] = sortType;
+        }
+
+        let ServiceProviderList = await ServiceProviderSchema.find(searchFilters)
+            .sort(sortRecord)
+            .limit(limitRecord)
+            .skip(skipRecord)
+            .exec();
+
+        for (let index = 0; index < ServiceProviderList.length; index++) {
+            const categoryId = ServiceProviderList[index].categoryId;
+
+            let ServiceProviderListCategory = await ServiceProviderCategorySchema.findOne({ _id: categoryId })
+
+            combineResponse.push({ ...ServiceProviderList[index].toObject(), categoryName: ServiceProviderListCategory.name })
+
+        }
+        let newsCountFiltered = await ServiceProviderSchema.find(searchFilters)
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: combineResponse.length,
+            filteredData: newsCountFiltered.length,
+            response: combineResponse
+        })
+
+
+
+    },
+
+
+    editServiceProviderModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        let file_with_path = ''
+        ServiceProviderSchema.findOne({ _id: data._id })
+            .then(async ven => {
+                if (ven) {
+
+                    if (data.image) {
+                        file_with_path = `./public/${ven.image}`;
+                    }
+                    if (data) {
+                        let [city] = await Promise.all([
+
+                            getLatLong(data.latitude, data.longitude, 'ServiceProviderSchema')
+                                .then(res => res)
+                        ]);
+                        ServiceProviderSchema.update(
+                            { _id: data._id },
+                            {
+                                $set: {
+                                    categoryId: data.categoryId,
+                                    name: data.name,
+                                    companyName: data.companyName,
+                                    companyWebsite: data.companyWebsite,
+                                    isdCode: data.isdCode,
+                                    contact: data.contact,
+                                    image: data.image,
+                                    description: data.description,
+                                    longitude: data.longitude,
+                                    latitude: data.latitude,
+                                    address: data.address,
+                                    city: city,
+                                    location: JSON.parse(data.location)
+                                }
+                            }
+                        ).then(r => {
+                            callback({
+                                success: true,
+                                STATUSCODE: 2000,
+                                message: "Success"
+                            });
+                        })
+                    }
+                }
+            });
+    },
+
+    deleteServiceProviderModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        if (data) {
+            ServiceProviderSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+    getAllServiceProviderModel: async function (data, callback) {
+        let combineResponse = []
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, data.modules)
+                .then(res => res)
+        ]);
+
+        ServiceProviderSchema.find({ city: city }).sort({ updatedAt: 'desc' })//.limit(5)
+            .then(async res => {
+                if (res.length > 0) {
+                    for (let index = 0; index < res.length; index++) {
+                        const categoryId = res[index].categoryId;
+                        const createdAt = res[index].createdAt;
+                        const updatedAt = res[index].updatedAt;
+
+                        let resCategory = await ServiceProviderCategorySchema.findOne({ _id: categoryId })
+                        combineResponse.push(
+                            {
+                                ...res[index].toObject(),
+                                categoryName: resCategory.name,
+                                formatedCreatedAt: moment(createdAt).format('LL'),
+                                formatedUpdatedAt: moment(updatedAt).format('LL')
+                            }
+                        )
+
+                    }
+
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success",
+                        response: combineResponse
+                    });
+                } else {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "No Announcement Found",
+                        response: []
+                    });
+
+                }
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+    //#region service provider category
+
+    addServiceProviderCategoryModel: async function (data, callback) {
+        if (data) {
+            var newsSchema = {
+                name: data.name,
+                description: data.description
+            }
+            new ServiceProviderCategorySchema(newsSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listServiceProviderCategoryModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'name': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        ServiceProviderCategorySchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countServiceProviderCategory = await ServiceProviderCategorySchema.countDocuments(qry).exec()
+
+
+        let newsCategory = await ServiceProviderCategorySchema.find(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countServiceProviderCategory,
+            response: newsCategory
+        })
+
+
+
+    },
+    editServiceProviderCategoryModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+
+            ServiceProviderCategorySchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        name: data.name,
+                        description: data.description
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deleteServiceProviderCategoryModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            ServiceProviderCategorySchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+    getAllServiceProviderCategoryModel: async function (data, callback) {
+
+        ServiceProviderCategorySchema.find()
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+
+
+    //#endregion service provider category
+
+    //#region Masjid
+
+    addMasjidModel: async function (data, callback) {
+
+        if (data) {
+            data.officeHrs = JSON.parse(data.officeHrs)
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'MasjidSchema')
+                    .then(res => res)
+            ]);
+            var sSchema = {
+                name: data.name,
+                establishmentDate: data.establishmentDate,
+                longitude: data.longitude,
+                latitude: data.latitude,
+                address: data.address,
+                officeHrs: data.officeHrs,
+                image: data.image,
+                city: city,
+                description: data.description,
+                location: JSON.parse(data.location),
+                scheduleOfficeHrs: JSON.parse(data.scheduleOfficeHrs)
+            }
+
+            new MasjidSchema(sSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listMasjidModel: async function (data, callback) {
+
+        var searchArray = [];
+        var combineResponse = [];
+        // "name" : "test masjid",
+        // "description" : "Test masjid desc",
+        // "address" : "6, Ballygunge, Kolkata, West Bengal 700019, India",
+        if (data.searchTerm) {
+            searchArray.push({ 'name': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        MasjidSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countNews = await MasjidSchema.countDocuments().exec()
+
+        //   let news = await MasjidSchema.find({})
+        //     .skip(data.offset).limit(data.limit)
+
+        let searchFilters = {};
+
+        if (data.searchTerm) {
+            searchFilters["name"] = { $regex: data.searchTerm, $options: "i" };
+        }
+
+        if (data.description) {
+            searchFilters["description"] = { $regex: data.description, $options: "i" };
+        }
+
+        if (data._id && data._id != '-1') {
+            searchFilters["_id"] = data._id;
+        }
+
+        if (data.address) {
+            searchFilters["address"] = { $regex: data.address, $options: "i" };
+        }
+
+        if (data.name) {
+            searchFilters["name"] = { $regex: data.name, $options: "i" };
+        }
+        
+        if (data.lat && data.long) {
+            searchFilters["location"] = {
+                $near: {
+                    $maxDistance: 10000,
+                    $geometry: {
+                        type: "Point",
+                        coordinates: [data.long, data.lat]
+                    }
+                }
+            };
+        }
+        //#region Set pagination and sorting===============================================
+        //=======(common Params[pageindex=1&pagesize=10&sortby=name&sorttype=Asc])
+        let sortRecord = { updatedAt: 'desc' };
+        let pageIndex = 1;
+        let pageSize = parseInt(config.limit);
+        let limitRecord = pageSize;
+        let skipRecord = 0;
+        //pageSize, pageIndex, sortBy, sortType, lat, long
+        if (data.pageSize) {
+            pageSize = parseInt(data.pageSize);
+        }
+        if (data.pageIndex) {
+            pageIndex = parseInt(data.pageIndex);
+        }
+        if (pageIndex > 1) {
+            skipRecord = (pageIndex - 1) * pageSize;
+        }
+        limitRecord = pageSize;
+        if (data.sortBy && data.sortType) {
+            let sortBy = data.sortBy;
+            let sortType = "";
+            if (data.sortType.toLowerCase() === "desc") {
+                sortType = -1;
+            }
+            //sortRecord = {}
+            sortRecord[sortBy] = sortType;
+        }
+
+
+        let masjid = await MasjidSchema.find(searchFilters)
+            .sort(sortRecord)
+            .limit(limitRecord)
+            .skip(skipRecord)
+            .exec();
+
+
+
+        for (let index = 0; index < masjid.length; index++) {
+            const createdAt = masjid[index].createdAt;
+            const updatedAt = masjid[index].updatedAt;
+
+            
+            combineResponse.push(
+                {
+                    ...masjid[index].toObject(),
+                    formatedCreatedAt: moment(createdAt).format('LL'),
+                    formatedUpdatedAt: moment(updatedAt).format('LL')
+                }
+            )
+
+        }
+
+        let masjidCountFiltered = await MasjidSchema.find(searchFilters)
+
+
+        if (masjid.length > 0) {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "Success",
+                totalData: countNews,
+                filteredData: masjidCountFiltered.length,
+                response: combineResponse
+            })
+        } else {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "Success",
+                totalData: 0,
+                filteredData: 0,
+                response: []
+            })
+        }
+
+
+
+    },
+
+
+
+    editMasjidModel: async function (data, callback) {
+        var obj = data.options;
+        data.officeHrs = JSON.parse(data.officeHrs)
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        let file_with_path = ''
+        MasjidSchema.findOne({ _id: data._id })
+            .then(async ven => {
+                if (ven) {
+
+                    if (data.image) {
+                        file_with_path = `./public/${ven.image}`;
+                    }
+
+                    if (data) {
+                        let [city] = await Promise.all([
+
+                            getLatLong(data.latitude, data.longitude, 'MasjidSchema')
+                                .then(res => res)
+                        ]);
+                        MasjidSchema.update(
+                            { _id: data._id },
+                            {
+                                $set: {
+                                    name: data.name,
+                                    establishmentDate: data.establishmentDate,
+                                    longitude: data.longitude,
+                                    latitude: data.latitude,
+                                    address: data.address,
+                                    officeHrs: data.officeHrs,
+                                    image: data.image,
+                                    city: city,
+                                    description: data.description,
+                                    location: JSON.parse(data.location),
+                                    scheduleOfficeHrs: JSON.parse(data.scheduleOfficeHrs)
+                                }
+                            }
+                        ).then(r => {
+                            callback({
+                                success: true,
+                                STATUSCODE: 2000,
+                                message: "Success"
+                            });
+                        })
+                    }
+                }
+            });
+    },
+
+
+
+
+
+
+
+    deleteMasjidModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            MasjidSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+    getAllMasjidModel: async function (data, callback) {
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, data.modules)
+                .then(res => res)
+        ]);
+        MasjidSchema.find({ city: city })
+            .then(res => {
+                if (res.length > 0) {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success",
+                        response: res
+                    });
+                } else {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "No Announcement Found",
+                        response: []
+                    });
+
+                }
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+
+
+    //#endregion Masjid
+
+    //#region country state city
+
+
+    listCountryModel: async function (data, callback) {
+
+        CountrySchema.find({})
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+    },
+
+
+    listStateModel: async function (data, callback) {
+        StateSchema.find({ country_id: data.country })
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+    },
+
+
+    listCityModel: async function (data, callback) {
+
+        CitySchema.find({ state_id: data.state })
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+    },
+    //#endregion
+
+    addQaModel: async function (data, callback) {
+
+        if (data) {
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'QaSchema')
+                    .then(res => res)
+            ]);
+            var qaSchema = {
+                qaType: data.qaType,
+                fullName: data.fullName,
+                email: data.email,
+                categoryId: data.categoryId,
+                description: data.description,
+                longitude: data.longitude,
+                latitude: data.latitude,
+                address: data.address,
+                city: city,
+                location: data.location
+            }
+
+            new QaSchema(qaSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listQaModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'title': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        QaSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countQa = await QaSchema.countDocuments(qry).exec()
+
+
+        let qa = await QaSchema.find(qry)
+            .skip(data.offset).limit(data.limit)
+
+
+        for (let index = 0; index < qa.length; index++) {
+            const categoryId = qa[index].categoryId;
+
+            let qaCategory = await QaCategorySchema.findOne({ _id: categoryId })
+
+            combineResponse.push({ ...qa[index].toObject(), categoryName: qaCategory.name })
+
+        }
+
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countQa,
+            response: combineResponse
+        })
+
+
+
+    },
+    editQaModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'QaSchema')
+                    .then(res => res)
+            ]);
+            QaSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        qaType: data.qaType,
+                        fullName: data.fullName,
+                        email: data.email,
+                        categoryId: data.categoryId,
+                        description: data.description,
+                        longitude: data.longitude,
+                        latitude: data.latitude,
+                        address: data.address,
+                        city: city,
+                        location: data.location
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deleteQaModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+
+            QaSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+    getAllQaModel: async function (data, callback) {
+
+        QaSchema.find()
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+
+    addQaCategoryModel: async function (data, callback) {
+
+        if (data) {
+
+            var qaSchema = {
+                name: data.name,
+                description: data.description
+            }
+
+            new QaCategorySchema(qaSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listQaCategoryModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'name': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        QaCategorySchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countQaCategory = await QaCategorySchema.countDocuments(qry).exec()
+
+
+        let qaCategory = await QaCategorySchema.find(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countQaCategory,
+            response: qaCategory
+        })
+
+
+
+    },
+    editQaCategoryModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            QaCategorySchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        name: data.name
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deleteQaCategoryModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            QaCategorySchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllQaCategoryModel: async function (data, callback) {
+
+        QaCategorySchema.find()
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+    //#region Advertisement
+
+
+
+    addAdvertisementModel: async function (data, callback) {
+
+        if (data) {
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'AdvertisementSchema')
+                    .then(res => res)
+            ]);
+            var qaSchema = {
+                page: data.page,
+                image: data.image,
+                imageStatus: data.imageStatus,
+                descriptionStatus: data.descriptionStatus,
+                longitude: data.longitude,
+                latitude: data.latitude,
+                address: data.address,
+                city: city,
+                description: data.description,
+                location: JSON.parse(data.location)
+            }
+
+            new AdvertisementSchema(qaSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listAdvertisementModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'page': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        AdvertisementSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countAdvertisement = await AdvertisementSchema.countDocuments(qry).exec()
+
+
+        let qaCategory = await AdvertisementSchema.find(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countAdvertisement,
+            response: qaCategory
+        })
+
+
+
+    },
+
+
+    editAdvertisementModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        let file_with_path = ''
+        AdvertisementSchema.findOne({ _id: data._id })
+            .then(async ven => {
+                if (ven) {
+
+                    if (data.image) {
+                        file_with_path = `./public/${ven.image}`;
+                    }
+
+                    if (data) {
+
+                        let [city] = await Promise.all([
+
+                            getLatLong(data.latitude, data.longitude, 'AdvertisementSchema')
+                                .then(res => res)
+                        ]);
+
+                        AdvertisementSchema.update(
+                            { _id: data._id },
+                            {
+                                $set: {
+                                    page: data.page,
+                                    image: data.image,
+                                    imageStatus: data.imageStatus,
+                                    descriptionStatus: data.descriptionStatus,
+                                    longitude: data.longitude,
+                                    latitude: data.latitude,
+                                    address: data.address,
+                                    city: city,
+                                    description: data.description,
+                                    location: JSON.parse(data.location)
+                                }
+                            }
+                        ).then(r => {
+                            callback({
+                                success: true,
+                                STATUSCODE: 2000,
+                                message: "Success"
+                            });
+                        })
+                    }
+                }
+            });
+    },
+
+
+
+    deleteAdvertisementModel: async function (data, callback) {
+        var obj = data.options;
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            AdvertisementSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllAdvertisementModel: async function (data, callback) {
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, data.modules)
+                .then(res => res)
+        ]);
+
+        AdvertisementSchema.find({ city: city }).limit(1)
+            .then(res => {
+                if (res.length > 0) {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success",
+                        response: res
+                    });
+                } else {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "No Announcement Found",
+                        response: []
+                    });
+
+                }
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+
+
+    //#endregion Advertisement
+
+
+    //#region AboutIslam
+
+
+
+    addAboutIslamModel: async function (data, callback) {
+
+        if (data) {
+
+            var qaSchema = {
+
+                description: data.description
+            }
+
+            new AboutIslamSchema(qaSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted test successfully.",
+                        response: r
+                    });
+                })
+
+
+        }
+    },
+    listAboutIslamModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'description': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        AboutIslamSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countAboutIslam = await AboutIslamSchema.countDocuments(qry).exec()
+
+
+        let qaCategory = await AboutIslamSchema.findOne(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countAboutIslam,
+            response: qaCategory
+        })
+
+
+
+    },
+    editAboutIslamModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            AboutIslamSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+
+                        description: data.description
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deleteAboutIslamModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        if (data) {
+            AboutIslamSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllAboutIslamModel: async function (data, callback) {
+        AboutIslamSchema.findOne()
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+    },
+
+    //#endregion AboutIslam
+
+    //#region AboutUs
+    addAboutUsModel: async function (data, callback) {
+        if (data) {
+            var qaSchema = {
+                description: data.description
+            }
+
+            new AboutUsSchema(qaSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted test successfully.",
+                        response: r
+                    });
+                })
+
+
+        }
+    },
+    listAboutUsModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'description': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        AboutUsSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countAboutUs = await AboutUsSchema.countDocuments(qry).exec()
+
+
+        let qaCategory = await AboutUsSchema.findOne(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countAboutUs,
+            response: qaCategory
+        })
+
+
+
+    },
+    editAboutUsModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        if (data) {
+            AboutUsSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+
+                        description: data.description
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deleteAboutUsModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        if (data) {
+            AboutUsSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllAboutUsModel: async function (data, callback) {
+        AboutUsSchema.findOne()
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+    //#endregion AboutUs
+
+    //#region PillerOfIslam
+
+    addPillerOfIslamModel: async function (data, callback) {
+
+        if (data) {
+
+            var qaSchema = {
+
+                description: data.description
+            }
+
+            new PillerOfIslamSchema(qaSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted test successfully.",
+                        response: r
+                    });
+                })
+
+
+        }
+    },
+    listPillerOfIslamModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'description': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        PillerOfIslamSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countPillerOfIslam = await PillerOfIslamSchema.countDocuments(qry).exec()
+
+
+        let qaCategory = await PillerOfIslamSchema.findOne(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countPillerOfIslam,
+            response: qaCategory
+        })
+
+
+
+    },
+    editPillerOfIslamModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        if (data) {
+            PillerOfIslamSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+
+                        description: data.description
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deletePillerOfIslamModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        if (data) {
+            PillerOfIslamSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllPillerOfIslamModel: async function (data, callback) {
+
+        PillerOfIslamSchema.findOne()
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+
+
+    //#endregion PillerOfIslam
+
+
+
+    //#region Announcement
+
+
+
+    addAnnouncementModel: async function (data, callback) {
+
+        if (data) {
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'AnnouncementSchema')
+                    .then(res => res)
+            ]);
+            var qaSchema = {
+                announcementStatus: data.announcementStatus,
+                longitude: data.longitude,
+                latitude: data.latitude,
+                address: data.address,
+                city: city,
+                description: data.description,
+                location: data.location
+            }
+
+            new AnnouncementSchema(qaSchema)
+                .save(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "Error.",
+                        response: err
+                    });
+                })
+
+        }
+    },
+    listAnnouncementModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'page': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        AnnouncementSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countAnnouncement = await AnnouncementSchema.countDocuments(qry).exec()
+
+
+        let qaCategory = await AnnouncementSchema.find(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countAnnouncement,
+            response: qaCategory
+        })
+
+
+
+    },
+    editAnnouncementModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        let [city] = await Promise.all([
+
+            getLatLong(data.latitude, data.longitude, 'AnnouncementSchema')
+                .then(res => res)
+        ]);
+        if (data) {
+            AnnouncementSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        announcementStatus: data.announcementStatus,
+                        longitude: data.longitude,
+                        latitude: data.latitude,
+                        address: data.address,
+                        city: city,
+                        description: data.description,
+                        location: data.location
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+
+    deleteAnnouncementModel: async function (data, callback) {
+        var obj = data.options;
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        if (data) {
+            AnnouncementSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllAnnouncementModel: async function (data, callback) {
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, data.modules)
+                .then(res => res)
+        ]);
+        AnnouncementSchema.find({ city: city })
+            .then(res => {
+
+                if (res.length > 0) {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success",
+                        response: res
+                    });
+                } else {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "No Announcement Found",
+                        response: []
+                    });
+
+                }
+
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+    
+    //#endregion Announcement
+
+    editAnnouncementStatusModel: async function (data, callback) {
+        // var obj = data.options;
+        console.log(data);
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        //console.log("answer",answer);
+        if (data.announcementStatus === true) {
+            data.announcementStatus = true
+        }
+        else {
+            data.announcementStatus = false
+        }
+
+        if (data) {
+            AnnouncementSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        announcementStatus: data.announcementStatus
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+
+
+
+    //#region Announcement
+
+
+
+    addPrayerModel: async function (data, callback) {
+
+        if (data) {
+
+            let monthData = data.month;
+            //console.log('monthData-->',monthData)
+            var d = new Date(monthData);
+            var m = d.getMonth() + 1;
+            //console.log('month-->',m)
+
+            let [city] = await Promise.all([
+
+                getLatLong(data.latitude, data.longitude, 'PrayerSchema')
+                    .then(res => res)
+            ]);
+
+
+            const getMonthData = await PrayerSchema.aggregate(
+                [
+                    {
+                        $project:
+                        {
+                            month: { $month: "$month" }
+                        }
+                    },
+                    {
+                        $match: {
+                            month: m
+                        }
+                    }
+                ]
+            )
+
+            if (getMonthData.length > 0) {
+                //update
+
+                PrayerSchema.update(
+                    { _id: getMonthData[0]._id },
+                    {
+                        $set: {
+                            month: data.month,
+                            fajrOpen: data.fajrOpen,
+                            fajrIqamah: data.fajrIqamah,
+                            zuhrOpen: data.zuhrOpen,
+                            zuhrIqamah: data.zuhrIqamah,
+                            dhuhrOpen: data.dhuhrOpen,
+                            dhuhrIqamah: data.dhuhrIqamah,
+                            maghribOpen: data.maghribOpen,
+                            maghribIqamah: data.maghribIqamah,
+                            ishaOpen: data.ishaOpen,
+                            ishaIqamah: data.ishaIqamah,
+                            sunrise: data.sunrise,
+                            sunset: data.sunset,
+                            longitude: data.longitude,
+                            latitude: data.latitude,
+                            address: data.address,
+                            city: city,
+                            prayers: data.prayers,
+                            prayersMonth: data.prayersMonth,
+                            prayersSunrise: data.prayersSunrise,
+                            prayersSunset: data.prayersSunset,
+                            location: data.location
+                        }
+                    }
+                ).then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+
+            } else {
+                //add
+
+                var qaSchema = {
+                    month: data.month,
+                    fajrOpen: data.fajrOpen,
+                    fajrIqamah: data.fajrIqamah,
+                    zuhrOpen: data.zuhrOpen,
+                    zuhrIqamah: data.zuhrIqamah,
+                    dhuhrOpen: data.dhuhrOpen,
+                    dhuhrIqamah: data.dhuhrIqamah,
+                    maghribOpen: data.maghribOpen,
+                    maghribIqamah: data.maghribIqamah,
+                    ishaOpen: data.ishaOpen,
+                    ishaIqamah: data.ishaIqamah,
+                    sunrise: data.sunrise,
+                    sunset: data.sunset,
+                    longitude: data.longitude,
+                    latitude: data.latitude,
+                    address: data.address,
+                    prayers: data.prayers,
+                    city: city,
+                    prayersMonth: data.prayersMonth,
+                    prayersSunrise: data.prayersSunrise,
+                    prayersSunset: data.prayersSunset,
+                    location: data.location
+                }
+                new PrayerSchema(qaSchema)
+                    .save(r => {
+                        callback({
+                            success: true,
+                            STATUSCODE: 2000,
+                            message: "Submitted successfully.",
+                            response: r
+                        });
+                    })
+                    .catch(err => {
+                        callback({
+                            success: false,
+                            STATUSCODE: 4200,
+                            message: "Error.",
+                            response: err
+                        });
+                    })
+
+            }
+
+
+
+        }
+    },
+    listPrayerModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'page': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        PrayerSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countPrayer = await PrayerSchema.countDocuments(qry).exec()
+
+
+        let qaCategory = await PrayerSchema.find(qry)
+            .skip(data.offset).limit(data.limit)
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: countPrayer,
+            response: qaCategory
+        })
+
+
+
+    },
+    editPrayerModel: async function (data, callback) {
+        var obj = data.options;
+        //console.log(obj);
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        //console.log("answer",answer);
+
+        let [city] = await Promise.all([
+
+            getLatLong(data.latitude, data.longitude, 'PrayerSchema')
+                .then(res => res)
+        ]);
+
+        console.log('city---', city)
+
+        if (data) {
+            PrayerSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        month: data.month,
+                        fajrOpen: data.fajrOpen,
+                        fajrIqamah: data.fajrIqamah,
+                        zuhrOpen: data.zuhrOpen,
+                        zuhrIqamah: data.zuhrIqamah,
+                        dhuhrOpen: data.dhuhrOpen,
+                        dhuhrIqamah: data.dhuhrIqamah,
+                        maghribOpen: data.maghribOpen,
+                        maghribIqamah: data.maghribIqamah,
+                        ishaOpen: data.ishaOpen,
+                        ishaIqamah: data.ishaIqamah,
+                        sunrise: data.sunrise,
+                        sunset: data.sunset,
+                        longitude: data.longitude,
+                        latitude: data.latitude,
+                        address: data.address,
+                        prayers: data.prayers,
+                        city: city,
+                        prayersMonth: data.prayersMonth,
+                        prayersSunrise: data.prayersSunrise,
+                        prayersSunset: data.prayersSunset,
+                        location: data.location
+
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+    deletePrayerModel: async function (data, callback) {
+        var obj = data.options;
+        //console.log(obj);
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        //console.log("answer",answer);
+
+        if (data) {
+            PrayerSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllPrayerModel: async function (data, callback) {
+
+        var todayDate = new Date().toISOString().slice(0, 10);
+        //console.log('todayDate--',todayDate)
+        console.log('prayer data-->', data)
+        console.log('prayer data lat-->', data.lat)
+        console.log('prayer data long-->', data.long)
+        console.log('prayer data module-->', data.modules)
+        //let city = ''
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, data.modules)
+                .then(res => res)
+        ]);
+        console.log('prayer city-->', city)
+
+        let monthData = data.month ? data.month : todayDate;
+        // console.log('monthData-->',monthData)
+        var d = new Date(monthData);
+        var m = d.getMonth() + 1;
+        var y = d.getFullYear();
+        // console.log('month-->',m)
+        // console.log('year-->',y)
+
+        let currentMonth = await PrayerSchema.aggregate(
+            [
+                { $project: { month: { $month: '$month' }, year: { $year: "$month" } } },
+                {
+                    $match: {
+
+                        $and: [
+                            { month: m },
+                            { year: y }
+                        ]
+                    }
+                }
+
+            ]
+        );
+
+        console.log('currentMonth--->', currentMonth)
+
+        if (currentMonth.length > 0) {
+
+            PrayerSchema.find({ _id: currentMonth[0]._id, city: city })
+                .select('prayersMonth prayers prayersSunrise prayersSunset location longitude latitude city createdAt updatedAt')
+                .lean(true)
+                //PrayerSchema.find()
+                .then(res => {
+                    if (res.length > 0) {
+                        callback({
+                            success: true,
+                            STATUSCODE: 2000,
+                            message: "Success",
+                            response: res
+                        });
+                    } else {
+                        callback({
+                            success: true,
+                            STATUSCODE: 2000,
+                            message: "No prayer in this month",
+                            response: []
+                        });
+                    }
+
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "something went wrong!",
+                        response: err
+                    });
+                })
+        } else {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "No prayer in this month",
+                response: []
+            });
+        }
+
+    },
+
+    getPrayerByMonthModel: async function (data, callback) {
+
+        //console.log('todayDate--',todayDate)
+        console.log('prayer data-->', data)
+        console.log('prayer data lat-->', data.lat)
+        console.log('prayer data long-->', data.long)
+
+        if (!data.lat) {
+            callback({
+                success: false,
+                STATUSCODE: 4200,
+                message: { error: "lat cannot be blank", msg: "Please Provide Latitude" },
+                response: {}
+            });
+        } else if (!data.long) {
+            callback({
+                success: false,
+                STATUSCODE: 4200,
+                message: { error: "long cannot be blank", msg: "Please Provide Longitude" },
+                response: {}
+            });
+        } else if (!data.month) {
+            callback({
+                success: false,
+                STATUSCODE: 4200,
+                message: { error: "month cannot be blank", msg: "Please Provide Month" },
+                response: {}
+            });
+        }
+
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, 'Schema')
+                .then(res => res)
+        ]);
+        console.log('prayer city-->', city)
+
+        let monthData = data.month;
+        // console.log('monthData-->',monthData)
+        var d = new Date(monthData);
+        var m = d.getMonth() + 1;
+        var y = d.getFullYear();
+        // console.log('month-->',m)
+        // console.log('year-->',y)
+
+        let currentMonth = await PrayerSchema.aggregate(
+            [
+                { $project: { month: { $month: '$month' }, year: { $year: "$month" } } },
+                {
+                    $match: {
+
+                        $and: [
+                            { month: m },
+                            { year: y }
+                        ]
+                    }
+                }
+
+            ]
+        );
+
+        console.log('currentMonth--->', currentMonth)
+
+        if (currentMonth.length > 0) {
+
+            PrayerSchema.find({ _id: currentMonth[0]._id, city: city })
+                .select('prayersMonth prayers prayersSunrise prayersSunset location longitude latitude city createdAt updatedAt')
+                .lean(true)
+                //PrayerSchema.find()
+                .then(res => {
+                    if (res.length > 0) {
+                        callback({
+                            success: true,
+                            STATUSCODE: 2000,
+                            message: "Success",
+                            response: res
+                        });
+                    } else {
+                        callback({
+                            success: true,
+                            STATUSCODE: 2000,
+                            message: "No prayer in this month",
+                            response: []
+                        });
+                    }
+
+                })
+                .catch(err => {
+                    callback({
+                        success: false,
+                        STATUSCODE: 4200,
+                        message: "something went wrong!",
+                        response: err
+                    });
+                })
+        } else {
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "No prayer in this month",
+                response: []
+            });
+        }
+
+
+
+    },
+
+
+    getHomeModel: async function (data, callback) {
+
+        let lat = data.lat
+
+        let long = data.long
+        let sortNewsList = []
+        if (data.lat && data.long) {
+            let [cityName] = await Promise.all([
+
+                getLatLong(data.lat, data.long, 'Schema')
+                    .then(res => res)
+            ]);
+            console.log('cityName-->', cityName)
+
+            let rootUrl = config.liveUrl;
+            let announcementsBody = { lat: lat, long: long, modules: 'AnnouncementSchema' };
+            let prayerBody = { lat: lat, long: long, modules: 'PrayerSchema' };
+            let newsBody = { lat: lat, long: long, modules: 'NewsSchema' };
+            let islamicradioBody = { lat: lat, long: long, modules: 'IslamicRadioSchema' };
+            let advertisementBody = { lat: lat, long: long, modules: 'AdvertisementSchema' };
+            let masjidBody = { lat: lat, long: long, modules: 'MasjidSchema' };
+            let serviceproviderBody = { lat: lat, long: long, modules: 'ServiceProviderSchema' };
+            // ,
+
+            const [announcementsDetails] = await Promise.all([
+
+                fetch(rootUrl + 'apiAdmin/get-all-announcement', {
+                    method: 'post',
+                    body: JSON.stringify(announcementsBody),
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                    .then(res => res.json())
+
+            ]);
+            console.log('announcements-->', announcementsDetails)
+
+
+            const [prayersDetails] = await Promise.all([
+
+                fetch(rootUrl + 'apiAdmin/get-all-prayer', {
+                    method: 'post',
+                    body: JSON.stringify(prayerBody),
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                    .then(res => res.json())
+
+            ]);
+
+            const [newsDetails] = await Promise.all([
+
+                fetch(rootUrl + 'apiAdmin/get-all-news', {
+                    method: 'post',
+                    body: JSON.stringify(newsBody),
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                    .then(res => res.json())
+                // .then(json => console.log(json.response))
+
+            ]);
+
+            //  console.log('getPrayer-->', newsDetails)   
+
+            const [islamicradioDetails] = await Promise.all([
+
+                fetch(rootUrl + 'apiAdmin/get-all-islamicradio', {
+                    method: 'post',
+                    body: JSON.stringify(islamicradioBody),
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                    .then(res => res.json())
+                // .then(json => console.log(json.response))
+
+            ]);
+
+            // console.log('getPrayer-->', islamicradioDetails)  
+
+            const [advertisementDetails] = await Promise.all([
+
+                fetch(rootUrl + 'apiAdmin/get-all-advertisement', {
+                    method: 'post',
+                    body: JSON.stringify(advertisementBody),
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                    .then(res => res.json())
+                // .then(json => console.log(json.response))
+
+            ]);
+
+            // console.log('getPrayer-->', advertisementDetails)  
+
+            const [masjidDetails] = await Promise.all([
+
+                fetch(rootUrl + 'apiAdmin/get-all-masjid', {
+                    method: 'post',
+                    body: JSON.stringify(masjidBody),
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                    .then(res => res.json())
+                // .then(json => console.log(json.response))
+
+            ]);
+            const [serviceproviderDetails] = await Promise.all([
+
+                fetch(rootUrl + 'apiAdmin/get-all-serviceprovider', {
+                    method: 'post',
+                    body: JSON.stringify(serviceproviderBody),
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                    .then(res => res.json())
+                // .then(json => console.log(json.response))
+
+            ]);
+            //   console.log('getPrayer-->', serviceproviderDetails)                      
+            let cityArray = []
+            if (announcementsDetails.response.length > 0) {
+                for (let index = 0; index < announcementsDetails.response.length; index++) {
+                    const createdAt = announcementsDetails.response[index].createdAt;
+                    const updatedAt = announcementsDetails.response[index].updatedAt;
+                    console.log('createdAt--', createdAt)
+                    console.log(moment(createdAt).format('LL'));
+                    cityArray.push(announcementsDetails.response[index].city)
+                    announcementsDetails.response[index] =
+                        {
+                            ...announcementsDetails.response[index],
+                            formatedCreatedAt: moment(createdAt).format('LL'),
+                            formatedUpdatedAt: moment(updatedAt).format('LL')
+
+                        }
+                }
+
+            }
+
+            if (prayersDetails.response.length > 0) {
+                for (let index = 0; index < prayersDetails.response.length; index++) {
+                    const createdAt = prayersDetails.response[index].createdAt;
+                    const updatedAt = prayersDetails.response[index].updatedAt;
+                    console.log('createdAt--', createdAt)
+                    console.log(moment(createdAt).format('LL'));
+                    cityArray.push(prayersDetails.response[index].city)
+                    prayersDetails.response[index] =
+                        {
+                            ...prayersDetails.response[index],
+                            formatedCreatedAt: moment(createdAt).format('LL'),
+                            formatedUpdatedAt: moment(updatedAt).format('LL')
+
+                        }
+                }
+
+            }
+
+            if (newsDetails.response.length > 0) {
+
+                let totalNews = 0
+                if (newsDetails.response.length > 5) {
+                    totalNews = 5
+                } else {
+                    totalNews = newsDetails.response.length
+                }
+                console.log('newsDetails.response.length--------', newsDetails.response.length)
+
+                console.log('totalNews--------', totalNews)
+                for (let index = 0; index < 5; index++) {
+                    const createdAt = newsDetails.response[index].createdAt;
+                    const updatedAt = newsDetails.response[index].updatedAt;
+                    console.log('createdAt--', createdAt)
+                    console.log(moment(createdAt).format('LL'));
+                    cityArray.push(newsDetails.response[index].city)
+                    sortNewsList.push(newsDetails.response[index] =
+                        {
+                            ...newsDetails.response[index],
+                            formatedCreatedAt: moment(createdAt).format('LL'),
+                            formatedUpdatedAt: moment(updatedAt).format('LL')
+
+                        })
+                }
+
+            }
+
+
+            if (islamicradioDetails.response.length > 0) {
+                for (let index = 0; index < islamicradioDetails.response.length; index++) {
+                    const createdAt = islamicradioDetails.response[index].createdAt;
+                    const updatedAt = islamicradioDetails.response[index].updatedAt;
+                    console.log('createdAt--', createdAt)
+                    console.log(moment(createdAt).format('LL'));
+                    cityArray.push(islamicradioDetails.response[index].city)
+                    islamicradioDetails.response[index] =
+                        {
+                            ...islamicradioDetails.response[index],
+                            formatedCreatedAt: moment(createdAt).format('LL'),
+                            formatedUpdatedAt: moment(updatedAt).format('LL')
+
+                        }
+                }
+
+            }
+
+
+            if (advertisementDetails.response.length > 0) {
+                for (let index = 0; index < advertisementDetails.response.length; index++) {
+                    const createdAt = advertisementDetails.response[index].createdAt;
+                    const updatedAt = advertisementDetails.response[index].updatedAt;
+                    console.log('createdAt--', createdAt)
+                    console.log(moment(createdAt).format('LL'));
+                    cityArray.push(advertisementDetails.response[index].city)
+                    advertisementDetails.response[index] =
+                        {
+                            ...advertisementDetails.response[index],
+                            formatedCreatedAt: moment(createdAt).format('LL'),
+                            formatedUpdatedAt: moment(updatedAt).format('LL')
+
+                        }
+                }
+
+            }
+
+
+            if (masjidDetails.response.length > 0) {
+                for (let index = 0; index < masjidDetails.response.length; index++) {
+                    const createdAt = masjidDetails.response[index].createdAt;
+                    const updatedAt = masjidDetails.response[index].updatedAt;
+                    console.log('createdAt--', createdAt)
+                    console.log(moment(createdAt).format('LL'));
+                    cityArray.push(masjidDetails.response[index].city)
+                    masjidDetails.response[index] =
+                        {
+                            ...masjidDetails.response[index],
+                            formatedCreatedAt: moment(createdAt).format('LL'),
+                            formatedUpdatedAt: moment(updatedAt).format('LL')
+
+                        }
+                }
+
+            }
+
+
+            if (serviceproviderDetails.response.length > 0) {
+                for (let index = 0; index < serviceproviderDetails.response.length; index++) {
+                    const createdAt = serviceproviderDetails.response[index].createdAt;
+                    const updatedAt = serviceproviderDetails.response[index].updatedAt;
+                    console.log('createdAt--', createdAt)
+                    console.log(moment(createdAt).format('LL'));
+                    cityArray.push(serviceproviderDetails.response[index].city)
+                    serviceproviderDetails.response[index] =
+                        {
+                            ...serviceproviderDetails.response[index],
+                            formatedCreatedAt: moment(createdAt).format('LL'),
+                            formatedUpdatedAt: moment(updatedAt).format('LL')
+
+                        }
+                }
+
+            }
+
+
+            console.log('cityArray', cityArray)
+
+            array_elements = cityArray//["a", "b", "c", "d", "e", "a", "b", "c", "f", "g", "h", "h", "h", "e", "a"];
+
+            array_elements.sort();
+            let cityObject = []
+            var current = null;
+            var cnt = 0;
+            for (var i = 0; i < array_elements.length; i++) {
+                if (array_elements[i] != current) {
+                    if (cnt > 0) {
+                        cityObject.push({ city: current, total: cnt })
+                        console.log(current + ' comes --> ' + cnt + ' times<br>');
+                    }
+                    current = array_elements[i];
+                    cnt = 1;
+                } else {
+                    cnt++;
+                }
+            }
+            if (cnt > 0) {
+                cityObject.push({ city: current, total: cnt })
+                console.log(current + ' comes --> ' + cnt + ' times');
+            }
+            let highestCity = null
+            if (cityObject.length > 0) {
+                let highestCity = cityObject.reduce(function (prev, curr) {
+                    return prev.total > curr.total ? prev : curr;
+                });
+            }
+
+
+            console.log('highestCity', highestCity)
+            if (cityName != '') {
+                cityName = cityName
+            } else if (highestCity != null) {
+                cityName = highestCity.city
+            } else {
+                cityName = ''
+            }
+
+            let allApiResponse = {
+                // googleCityDetails:filterData,
+                cityName: cityName,
+                announcement: announcementsDetails.response,
+                prayers: prayersDetails.response,
+                news: sortNewsList,
+                islamicradio: islamicradioDetails.response,
+                advertisement: advertisementDetails.response,
+                masjid: masjidDetails.response,
+                serviceprovider: serviceproviderDetails.response
+            }
+            callback({
+                success: true,
+                STATUSCODE: 2000,
+                message: "Success",
+                response: allApiResponse
+            });
+        } else {
+            callback({
+                success: false,
+                STATUSCODE: 4200,
+                message: "Please Provide Latitude and Longitude",
+                response: {}
+            });
+        }
+
+    },
+
+    //#endregion Prayer
+
+    editBannerStatusModel: async function (data, callback) {
+        // var obj = data.options;
+        console.log(data);
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        //console.log("answer",answer);
+        if (data.imageStatus === true) {
+            data.imageStatus = true
+            data.descriptionStatus = false
+        }
+        else {
+            data.imageStatus = false
+            data.descriptionStatus = true
+
+        }
+
+        if (data) {
+            AdvertisementSchema.update(
+                { _id: data._id },
+                {
+                    $set: {
+                        imageStatus: data.imageStatus,
+                        descriptionStatus: data.descriptionStatus,
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+
+
+    //#region IslamicRadio
+
+
+
+    addIslamicRadioModel: async function (data, callback) {
+
+        if (data) {
+
+            var qaSchema = {
+                radioFilePath: data.radioFilePath,
+                email: data.email,
+                phone: data.phone,
+                longitude: data.longitude,
+                latitude: data.latitude,
+                address: data.address,
+                location: JSON.parse(data.location)
+            }
+
+            new IslamicRadioSchema(qaSchema)
+                .save(r => {
+                    console.log('rrrrrrr->', r)
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Submitted successfully.",
+                        response: r
+                    });
+                })
+            // .catch(err =>{
+            //     callback({
+            //         success: false,
+            //         STATUSCODE: 4200,
+            //         message: "Error.",
+            //         response: err
+            //     });
+            // })
+
+        }
+    },
+    listIslamicRadioModel: async function (data, callback) {
+        var searchArray = [];
+        var combineResponse = [];
+
+        if (data.searchTerm) {
+            searchArray.push({ 'page': new RegExp(data.searchTerm, 'i') });
+        }
+        else {
+            searchArray.push({})
+        }
+
+        var qry = { $or: searchArray };
+
+        IslamicRadioSchema.countDocuments(qry).exec(function (err, resCount) {
+            if (err) {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            }
+        })
+
+        let countIslamicRadio = await IslamicRadioSchema.countDocuments(qry).exec()
+
+
+        let islamicRadio = await IslamicRadioSchema.find(qry)
+            .skip(data.offset).limit(data.limit)
+
+
+        callback({
+            success: true,
+            STATUSCODE: 2000,
+            message: "Success",
+            totalData: islamicRadio.length,
+            response: islamicRadio
+        })
+
+
+
+
+    },
+    editIslamicRadioModel: async function (data, callback) {
+        var obj = data.options;
+        //console.log(obj);
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+        let file_with_path = ''
+        console.log('data', data);
+        IslamicRadioSchema.findOne({ _id: data._id })
+            .then(async ven => {
+                if (ven) {
+
+                    if (data.radioFilePath) {
+                        file_with_path = `./public/${ven.radioFilePath}`;
+                        // if (fs.existsSync(file_with_path)) {
+                        //     await fs.unlink(file_with_path, (err) => {
+                        //         if (err) throw err;
+                        //         console.log('successfully deleted');
+                        //     });
+                        // }
+                    }
+                    //console.log("answer",answer);
+
+                    if (data) {
+                        IslamicRadioSchema.update(
+                            { _id: data._id },
+                            {
+                                $set: {
+                                    radioFilePath: data.radioFilePath ? data.radioFilePath : ven.radioFilePath,
+                                    longitude: data.longitude,
+                                    latitude: data.latitude,
+                                    address: data.address,
+                                    email: data.email,
+                                    phone: data.phone,
+                                    location: JSON.parse(data.location)
+                                }
+                            }
+                        ).then(r => {
+                            callback({
+                                success: true,
+                                STATUSCODE: 2000,
+                                message: "Success"
+                            });
+                        })
+                    }
+                }
+            });
+    },
+
+    deleteIslamicRadioModel: async function (data, callback) {
+        var obj = data.options;
+        //console.log(obj);
+
+        var answer = 0
+        var answer_key = 0;
+        var counter = 0;
+
+        //console.log("answer",answer);
+
+        if (data) {
+            IslamicRadioSchema.deleteOne({ _id: data._id })
+                .then(r => {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success"
+                    });
+                })
+        }
+    },
+
+
+    getAllIslamicRadioModel: async function (data, callback) {
+        console.log('announcement data-->', data)
+        console.log('announcement data lat-->', data.lat)
+        console.log('announcement data long-->', data.long)
+        console.log('announcement data module-->', data.modules)
+        //let city = ''
+        let [city] = await Promise.all([
+
+            getLatLong(data.lat, data.long, data.modules)
+                .then(res => res)
+        ]);
+        console.log('announcement city-->', city)
+        IslamicRadioSchema.find({ city: city }).limit(1)
+            .then(res => {
+
+                if (res.length > 0) {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "Success",
+                        response: res
+                    });
+                } else {
+                    callback({
+                        success: true,
+                        STATUSCODE: 2000,
+                        message: "No Announcement Found",
+                        response: []
+                    });
+
+                }
+
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+
+
+
+    //#endregion IslamicRadio
+
+
+
+
+
+    getTermsAndConditionsModel: async function (data, callback) {
+
+        TermSchema.findOne({ "_id": "5db7dea3c10c6e2604712024" })
+            .then(res => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success",
+                    response: res
+                });
+            })
+            .catch(err => {
+                callback({
+                    success: false,
+                    STATUSCODE: 4200,
+                    message: "something went wrong!",
+                    response: err
+                });
+            })
+
+    },
+    editTermsAndConditionsModel: async function (data, callback) {
+
+        if (data) {
+            TermSchema.update(
+                { "_id": data._id },
+                {
+                    $set: {
+                        text: data.text,
+
+                    }
+                }
+            ).then(r => {
+                callback({
+                    success: true,
+                    STATUSCODE: 2000,
+                    message: "Success"
+                });
+            })
+        }
+    },
+
+
+}
+
+//counter sequence
+const getNextSequence = async (name) => {
+    // var a = {
+    //     _id: new ObjectID,
+    //     orderId: "orderId",
+    //     seq: 0
+    // }
+    // new OrderCounterSchema(a).save()
+    var returnElement = 0
+    await CounterSchema.findOneAndUpdate(
+
+        {
+            orderId: "orderId"
+        }, {
+        $inc: {
+            seq: 1
+        }
+    }, {
+        new: true
+    }
+
+    ).then(counter => {
+        //console.log(counter);
+        returnElement = counter.seq;
+
+    })
+    //console.log(returnElement);
+
+
+    return returnElement;
+}
+
+module.exports = commonModel;

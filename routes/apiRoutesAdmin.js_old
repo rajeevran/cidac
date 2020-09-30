@@ -1,0 +1,598 @@
+'use strict';
+var express = require("express");
+var commonService = require('../services/adminServices/adminCommonService');
+var bodyParser = require('body-parser');
+var config = require('../config');
+var jwt = require('jsonwebtoken');
+var multer = require('multer');
+var path = require('path');
+var secretKey = config.secretKey;
+
+var api = express.Router();
+api.use(bodyParser.json());
+api.use(bodyParser.urlencoded({
+    extended: false
+}));
+const fs = require('fs');
+const DIR = path.resolve(__dirname.replace('routes', 'public'), 'uploads');
+
+let storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, DIR);
+    },
+    filename: (req, file, cb) => {
+        cb(null, file.fieldname + '-' + Date.now() + '.' + path.extname(file.originalname));
+    }
+});
+let upload = multer({ storage: storage });
+
+api.post('/upload', upload.single('photo'), function (req, res) {
+    if (!req.files) {
+        return res.send({
+            success: false
+        });
+
+    } else {
+        return res.send({
+            success: true
+        })
+    }
+});
+
+api.post('/adminSignup', function (req, res) {
+    var adminData = req.body;
+    commonService.adminSignup(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/adminLogin', function (req, res) {
+    var adminData = req.body;
+    commonService.adminLogin(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/addQuestion', function (req, res) {
+    var adminData = req.body;
+    commonService.addQuestionService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listQuestion', function (req, res) {
+    var adminData = req.body;
+    commonService.listQuestionService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editQuestion', function (req, res) {
+    var adminData = req.body;
+    commonService.editQuestionService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#region for News
+api.post('/addNews', function (req, res) {
+    var adminData = req.body;
+    commonService.addNewsService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listNews', function (req, res) {
+    var adminData = req.body;
+    commonService.listNewsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editNews', function (req, res) {
+    var adminData = req.body;
+    commonService.editNewsService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteNews', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteNewsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-news', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllNewsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for NewsCategory
+api.post('/addNewsCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.addNewsCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listNewsCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.listNewsCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editNewsCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.editNewsCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteNewsCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteNewsCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-all-newscategory', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllNewsCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for ServiceProvider
+api.post('/addServiceProvider', function (req, res) {
+    var adminData = req.body;
+    commonService.addServiceProviderService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listServiceProvider', function (req, res) {
+    var adminData = req.body;
+    commonService.listServiceProviderService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editServiceProvider', function (req, res) {
+    var adminData = req.body;
+    commonService.editServiceProviderService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteServiceProvider', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteServiceProviderService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-serviceprovider', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllServiceProviderService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for ServiceProviderCategory
+api.post('/addServiceProviderCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.addServiceProviderCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listServiceProviderCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.listServiceProviderCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editServiceProviderCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.editServiceProviderCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteServiceProviderCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteServiceProviderCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-news', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllServiceProviderCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for Masjid
+api.post('/addMasjid', function (req, res) {
+    var adminData = req.body;
+    commonService.addMasjidService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listMasjid', function (req, res) {
+    var adminData = req.body;
+    commonService.listMasjidService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editMasjid', function (req, res) {
+    var adminData = req.body;
+    commonService.editMasjidService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteMasjid', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteMasjidService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-masjid', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllMasjidService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region country state city
+api.post('/listCountry', function (req, res) {
+    var adminData = req.body;
+    commonService.listCountryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listState', function (req, res) {
+    var adminData = req.body;
+    commonService.listStateService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listCity', function (req, res) {
+    var adminData = req.body;
+    commonService.listCityService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+
+//#region for Qa
+api.post('/addQa', function (req, res) {
+    var adminData = req.body;
+    commonService.addQaService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listQa', function (req, res) {
+    var adminData = req.body;
+    commonService.listQaService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editQa', function (req, res) {
+    var adminData = req.body;
+    commonService.editQaService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteQa', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteQaService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-all-qa', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllQaService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for QaCategory
+api.post('/addQaCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.addQaCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listQaCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.listQaCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+})
+api.post('/editQaCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.editQaCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteQaCategory', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteQaCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-all-qa', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllQaCategoryService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+
+//#region for Advertisement
+api.post('/addAdvertisement', function (req, res) {
+    var adminData = req.body;
+    commonService.addAdvertisementService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listAdvertisement', function (req, res) {
+    var adminData = req.body;
+    commonService.listAdvertisementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editAdvertisement', function (req, res) {
+    var adminData = req.body;
+    commonService.editAdvertisementService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteAdvertisement', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteAdvertisementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-advertisement', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllAdvertisementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for AboutIslam
+api.post('/addAboutIslam', function (req, res) {
+    var adminData = req.body;
+    commonService.addAboutIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/listAboutIslam', function (req, res) {
+    var adminData = req.query;
+    commonService.listAboutIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editAboutIslam', function (req, res) {
+    var adminData = req.body;
+    commonService.editAboutIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteAboutIslam', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteAboutIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-all-aboutislam', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllAboutIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for AboutUs
+api.post('/addAboutUs', function (req, res) {
+    var adminData = req.body;
+    commonService.addAboutUsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/listAboutUs', function (req, res) {
+    var adminData = req.query;
+    commonService.listAboutUsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editAboutUs', function (req, res) {
+    var adminData = req.body;
+    commonService.editAboutUsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteAboutUs', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteAboutUsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-all-aboutislam', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllAboutUsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for PillerOfIslam
+api.post('/addPillerOfIslam', function (req, res) {
+    var adminData = req.body;
+    commonService.addPillerOfIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/listPillerOfIslam', function (req, res) {
+    var adminData = req.query;
+    commonService.listPillerOfIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editPillerOfIslam', function (req, res) {
+    var adminData = req.body;
+    commonService.editPillerOfIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deletePillerOfIslam', function (req, res) {
+    var adminData = req.body;
+    commonService.deletePillerOfIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-all-aboutislam', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllPillerOfIslamService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+//#region for Prayer
+api.post('/addPrayer', function (req, res) {
+    var adminData = req.body;
+    commonService.addPrayerService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listPrayer', function (req, res) {
+    var adminData = req.body;
+    commonService.listPrayerService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editPrayer', function (req, res) {
+    var adminData = req.body;
+    commonService.editPrayerService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deletePrayer', function (req, res) {
+    var adminData = req.body;
+    commonService.deletePrayerService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-prayer', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllPrayerService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/getPrayerByMonth', function (req, res) {
+    var adminData = req.query;
+    commonService.getPrayerByMonthService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/home', function (req, res) {
+    var adminData = req.body;
+    commonService.getHomeService(adminData, function (response) {
+        res.send(response);
+    });
+});
+//#endregion
+
+api.post('/editBannerStatus', function (req, res) {
+    var adminData = req.body;
+    commonService.editBannerStatusService(adminData, function (response) {
+        res.send(response);
+    });
+});
+
+//#region for Announcement
+api.post('/addAnnouncement', function (req, res) {
+    var adminData = req.body;
+    commonService.addAnnouncementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listAnnouncement', function (req, res) {
+    var adminData = req.body;
+    commonService.listAnnouncementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editAnnouncement', function (req, res) {
+    var adminData = req.body;
+    commonService.editAnnouncementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteAnnouncement', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteAnnouncementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-announcement', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllAnnouncementService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editAnnouncementStatus', function (req, res) {
+    var adminData = req.body;
+    commonService.editAnnouncementStatusService(adminData, function (response) {
+        res.send(response);
+    });
+})
+//#endregion
+
+//#region for IslamicRadio
+api.post('/addIslamicRadio', function (req, res) {
+    var adminData = req.body;
+    commonService.addIslamicRadioService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/listIslamicRadio', function (req, res) {
+    var adminData = req.body;
+    commonService.listIslamicRadioService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/editIslamicRadio', function (req, res) {
+    var adminData = req.body;
+    commonService.editIslamicRadioService(req.body, req.files, function (response) {
+        res.send(response);
+    });
+});
+api.post('/deleteIslamicRadio', function (req, res) {
+    var adminData = req.body;
+    commonService.deleteIslamicRadioService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/get-all-islamicradio', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllIslamicRadioService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-all-question', function (req, res) {
+    var adminData = req.body;
+    commonService.getAllQuestionService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.get('/get-terms-and-condition', function (req, res) {
+    var adminData = req.body;
+    commonService.getTermsAndConditionsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+api.post('/edit-terms-and-condition', function (req, res) {
+    var adminData = req.body;
+    commonService.editTermsAndConditionsService(adminData, function (response) {
+        res.send(response);
+    });
+});
+module.exports = api;

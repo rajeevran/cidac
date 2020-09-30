@@ -1,0 +1,990 @@
+var config = require('../../config');
+var async = require("async");
+var mongo = require('mongodb');
+var jwt = require('jsonwebtoken');
+var bcrypt = require('bcrypt-nodejs');
+var ObjectID = mongo.ObjectID;
+var Admin = require('../../schema/admin/admin');
+
+//======================MONGO MODELS============================
+var CommonModel = require('../../models/admin/adminCommonModel');
+// var VehicleType = require('../../models/');
+// var mailProperty = require('../../modules/sendMail');
+
+var common = {
+    jwtAuthVerification: (jwtData, callback) => {
+        
+        if (jwtData["x-access-token"]) {
+            CommonModel.authenticate(jwtData, function (auth) {
+                callback(auth);
+            })
+        } else {
+            callback({
+                success: false,
+                STATUSCODE: 4200,
+                message: "token missing",
+                response: {}
+            })
+        }
+    },
+   
+    adminSignup: function (adminData, callback) {
+        if (!adminData.email) {
+            callback({
+                success: false,
+                message: "please enter email"
+            });
+        }
+        if (!adminData.password) {
+            callback({
+                success: false,
+                message: "please enter password"
+            });
+        }
+        if (!adminData.name) {
+            callback({
+                success: false,
+                message: "please enter name"
+            });
+        }
+        
+        async.waterfall([
+            function (nextcb) {       //checking email existance
+                var cError1 = "";
+                Admin.findOne({ email: adminData.email }, function (err, admindet) {
+                    if (err)
+                        nextcb(err);
+                    else {
+                        if (admindet) {
+                            cError1 = "email already taken";
+                        }
+                        nextcb(null, cError1);
+                    }
+                });
+            },
+            function (cError1, nextcb) {    //updating admin's data
+                if (cError1) {
+                    nextcb(null, cError1);
+                } else {
+                    var admin = new Admin(adminData);
+                    admin.save(function (err) {
+                        if (err) {
+                            nextcb(err);
+                        } else {
+                            nextcb(null, cError1);
+                        }
+                    });
+                }
+            }
+
+        ], function (err, cError) {
+            if (err) {
+                callback({ success: false, message: "some internal error has occurred", err: err });
+            } else if (cError != "") {
+                callback({ success: false, message: cError });
+            } else {
+                callback({ success: true, message: "Admin saved successfully" })
+            }
+        });
+    },
+    adminLogin: function (adminData, callback) {
+        var id = "0";
+        if (adminData.email && adminData.password) {
+
+            Admin.findOne({ email: adminData.email })
+                .select('password name companyName permission authtoken blockStatus userType')
+                .lean(true)
+                .then(function (loginRes) {                    
+                    if (!loginRes) {
+                        callback({
+                            success: false,
+                            STATUSCODE: 4000,
+                            message: "User doesn't exist",
+                            response: {}
+                        });
+                    } else {
+                        var c = bcrypt.compareSync(adminData.password, loginRes.password);                        
+                        if (!c){
+                            callback({
+                                success: false,
+                                STATUSCODE: 4000,
+                                message: "User name or password is wrong",
+                                response: {}
+                            });
+                        } else {
+                            var token = jwt.sign({
+                                email: adminData.email,
+                                adminId: loginRes._id,
+                                userType: loginRes.userType
+                            }, config.secretKey, { expiresIn: '12h' });
+
+                            Admin.update({
+                                _id: loginRes._id
+                            }, {
+                                $set: {
+                                    authtoken: token
+                                }
+                            }, function (err, resUpdate) {
+                                if (err) {
+                                    
+                                } else {
+                                    callback({
+                                        success: true,
+                                        STATUSCODE: 2000,
+                                        message: "Login success",
+                                        response: {
+                                            email: adminData.email,
+                                            token: token,
+                                            //"id": loginRes._id,
+                                            "userType": loginRes.userType,
+                                            "permission": loginRes.permission,
+                                            "name": loginRes.name,
+                                            "companyName": loginRes.companyName,
+                                            "profileImage": loginRes.profileImage,
+                                            "blockStatus": loginRes.blockStatus
+                                        }
+                                    })
+                                }
+                            });
+                           
+                        }
+                    }
+
+                });
+        } else {
+            callback({
+                success: false,
+                STATUSCODE: 5000,
+                message: "Insufficient information provided for user login",
+                response: {}
+            });
+        }
+    },
+    addQuestionService: function (adminData, callback) {
+        CommonModel.addQuestionModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    listQuestionService: function (adminData, callback) {
+        CommonModel.listQuestionModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editQuestionService: function (adminData, callback) {
+        CommonModel.editQuestionModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+
+        
+    getAllQuestionService: function (adminData, callback) {
+        CommonModel.getAllQuestionModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    //#region news
+addNewsService: function (data,fileData, callback) {
+    if (fileData != undefined && fileData != '' && fileData != '') {
+        var pic = fileData.image;
+        var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+        var fileName = Date.now() + ext;
+        var folderpath = config.uploadNewsPath;
+        pic.mv(folderpath + fileName, function (err) {
+            if (err) {
+                callback({
+                    "success": false,
+                    "STATUSCODE": 5005,
+                    "message": "INTERNAL DB ERROR",
+                    "response": err
+                })
+            } else {
+                    data.image = config.newsPath + fileName;
+                    CommonModel.addNewsModel(data, function (result) {
+                    callback(result)
+                });
+            }
+        });
+    } else {
+            data.image = config.newsPath + 'no-img.jpg';
+            CommonModel.addNewsModel(data, function (result) {
+            callback(result)
+        });
+    }
+
+    },
+
+
+    listNewsService: function (adminData, callback) {
+        CommonModel.listNewsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    editNewsService: function (data,fileData, callback) {
+        if (fileData != undefined && fileData != '') {
+            var pic = fileData.image;
+            var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+            var fileName = Date.now() + ext;
+            var folderpath = config.uploadNewsPath;
+            pic.mv(folderpath + fileName, function (err) {
+                if (err) {
+                    callback({
+                        "success": false,
+                        "STATUSCODE": 5005,
+                        "message": "INTERNAL DB ERROR",
+                        "response": err
+                    })
+                } else {
+                    //data._id = new ObjectID;
+                    if(data.image == (config.newsPath + fileName) )
+                    {
+
+                    }else{
+                        data.image = config.newsPath + fileName;
+                    }
+                    CommonModel.editNewsModel(data, function (result) {
+                        callback(result)
+                    });
+                }
+            });
+        } else {
+            // data._id = new ObjectID;
+            data.image = data.image[0].replace(/undefined/g, '');
+            data.image = data.image.replace(/,/g, '');
+            CommonModel.editNewsModel(data, function (result) {
+                callback(result)
+            });
+        }
+
+       
+
+    },
+
+    deleteNewsService: function (adminData, callback) {
+        CommonModel.deleteNewsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    getAllNewsService: function (adminData, callback) {
+        CommonModel.getAllNewsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    //#endregion
+
+
+    //#region newscategory
+
+
+    addNewsCategoryService: function (adminData, callback) {
+    CommonModel.addNewsCategoryModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listNewsCategoryService: function (adminData, callback) {
+        CommonModel.listNewsCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editNewsCategoryService: function (adminData, callback) {
+        CommonModel.editNewsCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deleteNewsCategoryService: function (adminData, callback) {
+        CommonModel.deleteNewsCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllNewsCategoryService: function (adminData, callback) {
+        CommonModel.getAllNewsCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    //#endregion newscategory
+
+    //#region service Provider
+    addServiceProviderService: function (data,fileData, callback) {
+        if (fileData != undefined && fileData != '' && fileData != '') {
+            var pic = fileData.image;
+            var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+            var fileName = Date.now() + ext;
+            var folderpath = config.uploadServiceProviderPath;
+            pic.mv(folderpath + fileName, function (err) {
+                if (err) {
+                    callback({
+                        "success": false,
+                        "STATUSCODE": 5005,
+                        "message": "INTERNAL DB ERROR",
+                        "response": err
+                    })
+                } else {
+                        data.image = config.serviceproviderPath + fileName;
+                        CommonModel.addServiceProviderModel(data, function (result) {
+                        callback(result)
+                    });
+                }
+            });
+        } else {
+                data.image = config.serviceproviderPath + 'no-img.jpg';
+                CommonModel.addServiceProviderModel(data, function (result) {
+                callback(result)
+            });
+        }
+    
+        },
+
+    listServiceProviderService: function (adminData, callback) {
+        CommonModel.listServiceProviderModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    editServiceProviderService: function (data,fileData, callback) {
+        if (fileData != undefined && fileData != '') {
+            var pic = fileData.image;
+            var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+            var fileName = Date.now() + ext;
+            var folderpath = config.uploadNewsPath;
+            pic.mv(folderpath + fileName, function (err) {
+                if (err) {
+                    callback({
+                        "success": false,
+                        "STATUSCODE": 5005,
+                        "message": "INTERNAL DB ERROR",
+                        "response": err
+                    })
+                } else {
+                    //data._id = new ObjectID;
+                    if(data.image == (config.newsPath + fileName) )
+                    {
+
+                    }else{
+                        data.image = config.newsPath + fileName;
+                    }
+                    CommonModel.editServiceProviderModel(data, function (result) {
+                        callback(result)
+                    });
+                }
+            });
+        } else {
+            // data._id = new ObjectID;
+            data.image = data.image[0].replace(/undefined/g, '');
+            data.image = data.image.replace(/,/g, '');
+            CommonModel.editServiceProviderModel(data, function (result) {
+                callback(result)
+            });
+        }
+
+    },
+
+    deleteServiceProviderService: function (adminData, callback) {
+        CommonModel.deleteServiceProviderModel(adminData, function (res) {
+            callback(res);
+        })
+    },     
+    getAllServiceProviderService: function (adminData, callback) {
+        CommonModel.getAllServiceProviderModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    //#endregion
+
+
+    //#region  service provider category
+
+
+    addServiceProviderCategoryService: function (adminData, callback) {
+    CommonModel.addServiceProviderCategoryModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listServiceProviderCategoryService: function (adminData, callback) {
+        CommonModel.listServiceProviderCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editServiceProviderCategoryService: function (adminData, callback) {
+        CommonModel.editServiceProviderCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deleteServiceProviderCategoryService: function (adminData, callback) {
+        CommonModel.deleteServiceProviderCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },     
+    getAllServiceProviderCategoryService: function (adminData, callback) {
+        CommonModel.getAllServiceProviderCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    //#endregion service provider category
+
+   //#region Masjid Listing
+
+    addMasjidService: function (data,fileData, callback) {
+        if (fileData != undefined && fileData != '' && fileData != '') {
+            var pic = fileData.image;
+            var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+            var fileName = Date.now() + ext;
+            var folderpath = config.uploadMasjidPath;
+            pic.mv(folderpath + fileName, function (err) {
+                if (err) {
+                    callback({
+                        "success": false,
+                        "STATUSCODE": 5005,
+                        "message": "INTERNAL DB ERROR",
+                        "response": err
+                    })
+                } else {
+                        data.image = config.masjidPath + fileName;
+                        CommonModel.addMasjidModel(data, function (result) {
+                        callback(result)
+                    });
+                }
+            });
+        } else {
+                data.image = config.masjidPath + 'no-img.jpg';
+                CommonModel.addMasjidModel(data, function (result) {
+                callback(result)
+            });
+        }
+    
+        },
+
+    listMasjidService: function (adminData, callback) {
+        CommonModel.listMasjidModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    editMasjidService: function (data,fileData, callback) {
+        if (fileData != undefined && fileData != '') {
+            var pic = fileData.image;
+            var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+            var fileName = Date.now() + ext;
+            var folderpath = config.uploadMasjidPath;
+            pic.mv(folderpath + fileName, function (err) {
+                if (err) {
+                    callback({
+                        "success": false,
+                        "STATUSCODE": 5005,
+                        "message": "INTERNAL DB ERROR",
+                        "response": err
+                    })
+                } else {
+                    //data._id = new ObjectID;
+                    if(data.image == (config.masjidPath + fileName) )
+                    {
+
+                    }else{
+                        data.image = config.masjidPath + fileName;
+                    }
+                    CommonModel.editMasjidModel(data, function (result) {
+                        callback(result)
+                    });
+                }
+            });
+        } else {
+            // data._id = new ObjectID;
+            data.image = data.image[0].replace(/undefined/g, '');
+            data.image = data.image.replace(/,/g, '');
+            CommonModel.editMasjidModel(data, function (result) {
+                callback(result)
+            });
+        }
+
+    },
+
+    deleteMasjidService: function (adminData, callback) {
+        CommonModel.deleteMasjidModel(adminData, function (res) {
+            callback(res);
+        })
+    },     
+
+    getAllMasjidService: function (adminData, callback) {
+        CommonModel.getAllMasjidModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#endregion
+
+    //#region country state city
+
+    listCountryService: function (adminData, callback) {
+        CommonModel.listCountryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    listStateService: function (adminData, callback) {
+        CommonModel.listStateModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    listCityService: function (adminData, callback) {
+        CommonModel.listCityModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    //#endregion
+
+   //#region Qa
+
+
+   addQaService: function (adminData, callback) {
+    CommonModel.addQaModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listQaService: function (adminData, callback) {
+        CommonModel.listQaModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editQaService: function (adminData, callback) {
+        CommonModel.editQaModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deleteQaService: function (adminData, callback) {
+        CommonModel.deleteQaModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    getAllQaService: function (adminData, callback) {
+        CommonModel.getAllQaModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    //#endregion
+
+
+    //#region newscategory
+
+
+    addQaCategoryService: function (adminData, callback) {
+    CommonModel.addQaCategoryModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listQaCategoryService: function (adminData, callback) {
+        CommonModel.listQaCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editQaCategoryService: function (adminData, callback) {
+        CommonModel.editQaCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deleteQaCategoryService: function (adminData, callback) {
+        CommonModel.deleteQaCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllQaCategoryService: function (adminData, callback) {
+        CommonModel.getAllQaCategoryModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#endregion qaCategory
+
+//#region Advertisement
+
+        addAdvertisementService: function (data,fileData, callback) {
+            if (fileData != undefined && fileData != '' && fileData != '') {
+                var pic = fileData.image;
+                var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+                var fileName = Date.now() + ext;
+                var folderpath = config.uploadAdvertisementPath;
+                pic.mv(folderpath + fileName, function (err) {
+                    if (err) {
+                        callback({
+                            "success": false,
+                            "STATUSCODE": 5005,
+                            "message": "INTERNAL DB ERROR",
+                            "response": err
+                        })
+                    } else {
+                            data.image = config.advertisementPath + fileName;
+                            CommonModel.addAdvertisementModel(data, function (result) {
+                            callback(result)
+                        });
+                    }
+                });
+            } else {
+                    data.image = config.advertisementPath + 'no-img.jpg';
+                    CommonModel.addAdvertisementModel(data, function (result) {
+                    callback(result)
+                });
+            }
+        
+            },
+
+        listAdvertisementService: function (adminData, callback) {
+            CommonModel.listAdvertisementModel(adminData, function (res) {
+                callback(res);
+            })
+        },
+
+        editAdvertisementService: function (data,fileData, callback) {
+            if (fileData != undefined && fileData != '') {
+                var pic = fileData.image;
+                var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+                var fileName = Date.now() + ext;
+                var folderpath = config.uploadAdvertisementPath;
+                pic.mv(folderpath + fileName, function (err) {
+                    if (err) {
+                        callback({
+                            "success": false,
+                            "STATUSCODE": 5005,
+                            "message": "INTERNAL DB ERROR",
+                            "response": err
+                        })
+                    } else {
+                        //data._id = new ObjectID;
+                        if(data.image == (config.advertisementPath + fileName) )
+                        {
+    
+                        }else{
+                            data.image = config.advertisementPath + fileName;
+                        }
+                        CommonModel.editAdvertisementModel(data, function (result) {
+                            callback(result)
+                        });
+                    }
+                });
+            } else {
+                // data._id = new ObjectID;
+                data.image = data.image[0].replace(/undefined/g, '');
+                data.image = data.image.replace(/,/g, '');
+                CommonModel.editAdvertisementModel(data, function (result) {
+                    callback(result)
+                });
+            }
+    
+        },
+
+        deleteAdvertisementService: function (adminData, callback) {
+            CommonModel.deleteAdvertisementModel(adminData, function (res) {
+                callback(res);
+            })
+        },    
+        getAllAdvertisementService: function (adminData, callback) {
+            CommonModel.getAllAdvertisementModel(adminData, function (res) {
+                callback(res);
+            })
+        },
+    
+//#endregion Advertisement
+
+
+//#region AboutIslam
+
+
+addAboutIslamService: function (adminData, callback) {
+    CommonModel.addAboutIslamModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listAboutIslamService: function (adminData, callback) {
+        CommonModel.listAboutIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editAboutIslamService: function (adminData, callback) {
+        CommonModel.editAboutIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deleteAboutIslamService: function (adminData, callback) {
+        CommonModel.deleteAboutIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllAboutIslamService: function (adminData, callback) {
+        CommonModel.getAllAboutIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#endregion AboutIslam
+
+
+
+//#region AboutUs
+
+
+addAboutUsService: function (adminData, callback) {
+    CommonModel.addAboutUsModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listAboutUsService: function (adminData, callback) {
+        CommonModel.listAboutUsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editAboutUsService: function (adminData, callback) {
+        CommonModel.editAboutUsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deleteAboutUsService: function (adminData, callback) {
+        CommonModel.deleteAboutUsModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllAboutUsService: function (adminData, callback) {
+        CommonModel.getAllAboutUsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#endregion AboutUs
+
+
+
+
+
+//#region PillerOfIslam
+
+
+addPillerOfIslamService: function (adminData, callback) {
+    CommonModel.addPillerOfIslamModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listPillerOfIslamService: function (adminData, callback) {
+        CommonModel.listPillerOfIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editPillerOfIslamService: function (adminData, callback) {
+        CommonModel.editPillerOfIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deletePillerOfIslamService: function (adminData, callback) {
+        CommonModel.deletePillerOfIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllPillerOfIslamService: function (adminData, callback) {
+        CommonModel.getAllPillerOfIslamModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#endregion PillerOfIslam
+
+
+
+
+//#region Prayer
+
+
+addPrayerService: function (adminData, callback) {
+    CommonModel.addPrayerModel(adminData, function (res) {
+        callback(res);
+    })
+    },
+    listPrayerService: function (adminData, callback) {
+        CommonModel.listPrayerModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editPrayerService: function (adminData, callback) {
+        CommonModel.editPrayerModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    deletePrayerService: function (adminData, callback) {
+        CommonModel.deletePrayerModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllPrayerService: function (adminData, callback) {
+        CommonModel.getAllPrayerModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    getPrayerByMonthService: function (adminData, callback) {
+        CommonModel.getPrayerByMonthModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    
+//#endregion Prayer
+
+
+//#region Announcement
+
+
+    addAnnouncementService: function (adminData, callback) {
+        CommonModel.addAnnouncementModel(adminData, function (res) {
+            callback(res);
+        })
+        },
+
+    listAnnouncementService: function (adminData, callback) {
+        CommonModel.listAnnouncementModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editAnnouncementService: function (adminData, callback) {
+        CommonModel.editAnnouncementModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+
+
+    deleteAnnouncementService: function (adminData, callback) {
+        CommonModel.deleteAnnouncementModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllAnnouncementService: function (adminData, callback) {
+        CommonModel.getAllAnnouncementModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    editAnnouncementStatusService: function (adminData, callback) {
+        CommonModel.editAnnouncementStatusModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#endregion Announcement
+    getHomeService: function (adminData, callback) {
+        CommonModel.getHomeModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    editBannerStatusService: function (adminData, callback) {
+        CommonModel.editBannerStatusModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#region IslamicRadio
+
+
+addIslamicRadioService: function (data,fileData, callback) {
+    if (fileData != undefined && fileData != '' && fileData != '') {
+        var pic = fileData.radioFilePath;
+        var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+        var fileName = Date.now() + ext;
+        var folderpath = config.uploadIslamicRadioPath;
+        pic.mv(folderpath + fileName, function (err) {
+            if (err) {
+                callback({
+                    "success": false,
+                    "STATUSCODE": 5005,
+                    "message": "INTERNAL DB ERROR",
+                    "response": err
+                })
+            } else {
+                data.radioFilePath = config.islamicRadioPath + fileName;
+                 CommonModel.addIslamicRadioModel(data, function (result) {
+                    callback(result)
+                });
+            }
+        });
+    } else {
+        data.radioFilePath = 'uploads/no-img.jpg';
+         CommonModel.addIslamicRadioModel(data, function (result) {
+            callback(result)
+        });
+    }
+
+    },
+
+    listIslamicRadioService: function (adminData, callback) {
+        CommonModel.listIslamicRadioModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editIslamicRadioService: function (data,fileData, callback) {
+
+        if (fileData != undefined && fileData != '') {
+            var pic = fileData.radioFilePath;
+            var ext = pic.name.slice(pic.name.lastIndexOf('.'));
+            var fileName = Date.now() + ext;
+            var folderpath = config.uploadIslamicRadioPath;
+            pic.mv(folderpath + fileName, function (err) {
+                if (err) {
+                    callback({
+                        "success": false,
+                        "STATUSCODE": 5005,
+                        "message": "INTERNAL DB ERROR",
+                        "response": err
+                    })
+                } else {
+                    //data._id = new ObjectID;
+                    data.radioFilePath = config.islamicRadioPath + fileName;
+                    CommonModel.editIslamicRadioModel(data, function (result) {
+                        callback(result)
+                    });
+                }
+            });
+        } else {
+            // data._id = new ObjectID;
+            data.radioFilePath = data.radioFilePath[0].replace(/undefined/g, '');
+            data.radioFilePath = data.radioFilePath.replace(/,/g, '');
+
+            CommonModel.editIslamicRadioModel(data, function (result) {
+                callback(result)
+            });
+        }
+
+    },
+    deleteIslamicRadioService: function (adminData, callback) {
+        CommonModel.deleteIslamicRadioModel(adminData, function (res) {
+            callback(res);
+        })
+    },    
+    getAllIslamicRadioService: function (adminData, callback) {
+        CommonModel.getAllIslamicRadioModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+    editIslamicRadioStatusService: function (adminData,  callback) {
+        CommonModel.editIslamicRadioStatusModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+//#endregion IslamicRadio
+
+
+    getTermsAndConditionsService: function (adminData, callback) {
+        CommonModel.getTermsAndConditionsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+    editTermsAndConditionsService: function (adminData, callback) {
+        CommonModel.editTermsAndConditionsModel(adminData, function (res) {
+            callback(res);
+        })
+    },
+
+}
+
+module.exports = common;

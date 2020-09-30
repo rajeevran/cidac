@@ -1,0 +1,18 @@
+module.exports = function (profile) {
+	var profileContainer = {
+		"local": {
+			APN_CERTI: "/certificate/CIDACDevCertificates.pem",
+			APN_KEY: "/certificate/CIDACDevKeyCertificates.pem",
+			FCM_SERVER_KEY: 'AAAA4pSYiKA:APA91bH3Z3ZlzziJdxtmUb_RZb4zwqs2GpIMGwHbfNssbqPOjTwmn2Ilz_Jh9JMRihp-Xp25upO4VT_ZqSK0FpFcRYSJNHmYvyU3B1XoME-oE1beawoQOjboV8KEkXhXOUNeZUn8y6pj'
+
+		},
+		"production": {
+			APN_CERTI: "/certificate/CIDACAdhocCertificates.pem",
+			APN_KEY: "/certificate/CIDACAdhocKeyCertificates.pem",
+			FCM_SERVER_KEY: 'AAAA4pSYiKA:APA91bH3Z3ZlzziJdxtmUb_RZb4zwqs2GpIMGwHbfNssbqPOjTwmn2Ilz_Jh9JMRihp-Xp25upO4VT_ZqSK0FpFcRYSJNHmYvyU3B1XoME-oE1beawoQOjboV8KEkXhXOUNeZUn8y6pj'
+
+		}
+
+	}
+	return profileContainer[profile];
+}
